@@ -167,6 +167,7 @@ namespace Tmds.Systemd.Tool
             int euid = geteuid();
             if (euid != 0)
             {
+                // TODO: print a full command line that includes the executable.
                 string sudoCommand = "sudo";
                 string scls = GetSoftwareCollections();
                 if (scls != null)
