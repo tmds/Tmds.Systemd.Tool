@@ -1,0 +1,16 @@
+language: csharp
+mono: none
+dist: xenial
+dotnet: 2.2
+
+env:
+  global:
+    - secure: "CkvhNUwoMPk6MWc7RAfh2Qa9/WKLEgkJl3aB8xKFOm+pldeN9imANKeI3fp/b6QyBMA4BPIaXnMshKlywnmE1icGQTofJui9RqYzwE+f0a60Ux/1iSqoBEYNojqFBDSajapn9jDX7iO+62gew5bOmW4kRPOC15ndvC8nvUzpOM96dcOZUu/tLAsEt9CETcLCC2VDm65pr9YVruNDiaHfoENOO8LdOYYJ8KqGS3Zip/c2tt1PiSJNR2CW7onwIesHTMhq7R+guW/VfJkA9i6gEEGLQ0d94PhI0pduFlukeXhsGhE6vw67RJvktUy5SY2Lj/055wExOoFoZXGrY2Yd8sdwTjMZnNOr8zYgK4XYlriiBCjrRK31EgyFAYWqARp7T8G4edTKwE0RSGYa6mR8VQ8S+mvpYB2HY6NTHJUhMGDEHSnHQ8e6eP6HpFBTmO+T0WrJYnMaxIxuKQA+dsP3mrtyPsdfCW/T7dnpbk+ssgelW0cJaT26zc7EKt7gR2Zjk0wOvIF3uTfUgqoKQdYKafgsIiGov/NEDQZI96HH9rrtsWboCU5TTXuUr8UCCUFt3xUttPmuJ5h9TLEvhIUfF4rWWTSd0+dJxtOhpA6KqzGKK8n8xwKTXt1tVj4PMEHuMNqeOTDjhMv5y6ckJCEo0fUWGbGAIb4YIwojMVByQ7E="
+
+script:
+  - dotnet pack src/Tmds.Systemd.Tool --configuration Release --version-suffix "$(date +"%y%m%d")-$TRAVIS_BUILD_NUMBER" --output .
+
+after_success:
+  - 'if [ "$TRAVIS_BRANCH" == "master" ] && [ "$TRAVIS_PULL_REQUEST" == "false" ]; then
+  curl -H "X-NuGet-ApiKey: $NUGET_APIKEY" -T src/Tmds.Systemd.Tool/Tmds.Systemd.Tool.*.nupkg https://www.myget.org/F/tmds/api/v2/package ;
+     fi'
