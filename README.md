@@ -19,23 +19,10 @@ dotnet publish -c Release
 
 Create a systemd service:
 ```
+# system service:
 sudo ~/.dotnet/tools/dotnet-systemd create-service --name webapp --execstart bin/Release/netcoreapp*/web.dll
-```
-
-Start the service:
-```
-sudo systemctl daemon-reload
-sudo systemctl start webapp
-```
-
-Check the status:
-```
-sudo systemctl status webapp
-```
-
-Retrieve the log:
-```
-journalctl -t webapp
+# user service:
+dotnet-systemd create-service --user --name webapp --execstart bin/Release/netcoreapp*/web.dll
 ```
 
 For more options, run:
