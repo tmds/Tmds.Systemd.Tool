@@ -26,6 +26,22 @@ namespace Tmds.Systemd.Tool
             return null;
         }
 
+        public static bool ExecuteSuccess(string filename, string arguments)
+        {
+            using (var process = System.Diagnostics.Process.Start(new ProcessStartInfo
+            {
+                FileName = filename,
+                Arguments = arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardInput = true,
+                RedirectStandardError = true
+            }))
+            {
+                process.WaitForExit();
+                return process.ExitCode == 0;
+            }
+        }
+
         public static string FindProgramInPath(string program)
         {
             string pathEnvVar = Environment.GetEnvironmentVariable("PATH");

@@ -96,8 +96,39 @@ namespace Tmds.Systemd.Tool
 
             try
             {
-                // TODO: permissions
-                using (FileStream fs = new FileStream(systemdServiceFilePath, FileMode.CreateNew))
+                if (systemUnit)
+                {
+                    // Create a new empty file.
+                    using (FileStream fs = new FileStream(systemdServiceFilePath, FileMode.CreateNew))
+                    {
+                        using (StreamWriter sw = new StreamWriter(fs))
+                        { }
+                    }
+                    bool deleteFile = true;
+                    try
+                    {
+                        if (!ProcessHelper.ExecuteSuccess("chmod", $"644 {systemdServiceFilePath}") ||
+                            !ProcessHelper.ExecuteSuccess("chown", $"root:root {systemdServiceFilePath}"))
+                        {
+                            System.Console.WriteLine($"Failed to set permissions and ownership of {systemdServiceFilePath}");
+                            return 1;
+                        }
+                        deleteFile = false;
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            if (deleteFile)
+                            {
+                                File.Delete(systemdServiceFilePath);
+                            }
+                        }
+                        catch
+                        {}
+                    }
+                }
+                using (FileStream fs = new FileStream(systemdServiceFilePath, systemUnit ? FileMode.Truncate : FileMode.CreateNew))
                 {
                     using (StreamWriter sw = new StreamWriter(fs))
                     {
