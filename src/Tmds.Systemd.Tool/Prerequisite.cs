@@ -71,14 +71,20 @@ namespace Tmds.Systemd.Tool
             int euid = geteuid();
             if (euid != 0)
             {
-                // TODO: print a full command line that includes the executable.
-                string sudoCommand = "sudo";
+                string command = "sudo ";
                 string scls = GetSoftwareCollections();
                 if (scls != null)
                 {
-                    sudoCommand = $"{sudoCommand} scl enable {scls} --";
+                    command = $"{command}scl enable {scls} -- ";
                 }
-                Console.WriteLine($"This command needs root. Please run it with '{sudoCommand}'.");
+                string[] arguments = ProcessHelper.GetApplicationArguments();
+                if (!Path.IsPathRooted(arguments[0]))
+                {
+                    arguments[0] = ProcessHelper.FindProgramInPath(arguments[0]) ?? arguments[0];
+                }
+                command += ProcessHelper.CreateCommandLine(arguments);
+                Console.WriteLine($"This command needs root. You can run it as:");
+                System.Console.WriteLine(command);
                 return false;
             }
             return true;

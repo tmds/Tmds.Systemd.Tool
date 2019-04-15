@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 
 namespace Tmds.Systemd.Tool
 {
@@ -24,6 +25,11 @@ namespace Tmds.Systemd.Tool
                 }
             }
             return null;
+        }
+
+        public static string[] GetApplicationArguments()
+        {
+            return File.ReadAllText($"/proc/{Process.GetCurrentProcess().Id}/cmdline").Split(new[] { '\0' });
         }
 
         public static bool ExecuteSuccess(string filename, string arguments)
@@ -58,6 +64,25 @@ namespace Tmds.Systemd.Tool
                 }
             }
             return null;
+        }
+
+        public static string CreateCommandLine(string[] arguments)
+        {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < arguments.Length; i++)
+            {
+                string arg = arguments[i];
+                if (arg.Contains(' '))
+                {
+                    arg = "'" + arg  + "'";
+                }
+                sb.Append(arg);
+                if (i != arguments.Length - 1)
+                {
+                    sb.Append(' ');
+                }
+            }
+            return sb.ToString();
         }
     }
 }
