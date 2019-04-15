@@ -56,7 +56,7 @@ namespace Tmds.Systemd.Tool
             return true;
         }
 
-        private static bool ResolveApplication(string execStartUser, out string execStart, out string workingDirectory)
+        private static bool ResolveApplication(string execStartUser, bool systemUnit, out string execStart, out string workingDirectory)
         {
             workingDirectory = null;
             if (File.Exists(execStartUser))
@@ -79,6 +79,24 @@ namespace Tmds.Systemd.Tool
                 {
                     return false;
                 }
+
+                // Fedora: ensure dotnet exe has proper SELinux context.
+                if (systemUnit &&
+                    dotnetPath == "/usr/bin/dotnet" &&
+                    Execute("readlink", dotnetPath) == "/usr/lib64/dotnet/dotnet")
+                {
+                    string dotnetExePath = "/usr/lib64/dotnet/dotnet";
+
+                    if (Execute("stat", $"-c %C {dotnetExePath}")?.Contains("lib_t") == true)
+                    {
+                        Console.WriteLine($"The dotnet executable at {dotnetExePath} doesn't have the proper SELinux context.");
+                        System.Console.WriteLine("Please update the context by running the following commands:");
+                        Console.WriteLine("sudo yum install -y policycoreutils-python-utils");
+                        Console.WriteLine($"sudo semanage fcontext -a -t bin_t {dotnetExePath.Replace("/lib64/", "/lib/")}");
+                        Console.WriteLine($"sudo restorecon -v {dotnetExePath}");
+                        return false;
+                    }
+                }
                 execStart = $"'{dotnetPath}' '{execStart}'";
             }
             string scls = GetSoftwareCollections();
@@ -94,37 +112,29 @@ namespace Tmds.Systemd.Tool
             return true;
         }
 
+        private static string Execute(string filename, string arguments)
+        {
+            using (var process = System.Diagnostics.Process.Start(new ProcessStartInfo
+            {
+                FileName = filename,
+                Arguments = arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardInput = true,
+                RedirectStandardError = true
+            }))
+            {
+                process.WaitForExit();
+                if (process.ExitCode == 0)
+                {
+                    return process.StandardOutput.ReadToEnd();
+                }
+            }
+            return null;
+        }
+
         private static bool FindProgramInPath(string program, out string programPath)
         {
             programPath = FindProgramInPath(program);
-
-            // Deal with SELinux issue on Fedora:
-            if (program == "dotnet" && programPath == "/usr/lib64/dotnet/dotnet")
-            {
-                using (var process = System.Diagnostics.Process.Start(new ProcessStartInfo
-                {
-                    FileName = "stat",
-                    Arguments = $"-c %C {programPath}",
-                    RedirectStandardOutput = true,
-                    RedirectStandardInput = true,
-                    RedirectStandardError = true
-                }))
-                {
-                    process.WaitForExit();
-                    if (process.ExitCode == 0)
-                    {
-                        var context = process.StandardOutput.ReadToEnd();
-                        if (context.Contains("lib_t"))
-                        {
-                            Console.WriteLine($"The dotnet executable at {programPath} doesn't have the proper SELinux context.");
-                            System.Console.WriteLine("Please update the context by running the following commands:");
-                            System.Console.WriteLine($"sudo semanage fcontext -a -t bin_t {programPath}");
-                            System.Console.WriteLine($"sudo restorecon -R -v {programPath}");
-                            return false;
-                        }
-                    }
-                }
-            }
 
             if (programPath == null)
             {
@@ -184,12 +194,13 @@ namespace Tmds.Systemd.Tool
 
         private static int CreateServiceHandler(bool userUnit, ParseResult result)
         {
+            bool systemUnit = !userUnit;
             var commandOptions = GetCommandOptions(result);
 
             if (!GetRequired(commandOptions, "name", out string unitName) ||
                 !GetRequired(commandOptions, "execstart", out string execStartUser) ||
-                (!userUnit && !VerifyRunningAsRoot()) ||
-                !ResolveApplication(execStartUser, out string execStart, out string workingDirectory))
+                (systemUnit && !VerifyRunningAsRoot()) ||
+                !ResolveApplication(execStartUser, systemUnit, out string execStart, out string workingDirectory))
             {
                 return 1;
             }
