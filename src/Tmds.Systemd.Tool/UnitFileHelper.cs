@@ -49,34 +49,41 @@ namespace Tmds.Systemd.Tool
             return sb.ToString();
         }
 
-        public static string CreateNewUnitFile(bool systemUnit, string filename, string content)
+        public static bool TryCreateNewUnitFile(bool systemUnit, string filename, string content, out string unitFilePath)
         {
-            string systemdServiceFilePath;
             if (systemUnit)
             {
-                systemdServiceFilePath = $"/etc/systemd/system/{filename}";
+                unitFilePath = $"/etc/systemd/system/{filename}";
             }
             else
             {
                 string userUnitFolder = $"{Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)}/.config/systemd/user";
                 Directory.CreateDirectory(userUnitFolder);
-                systemdServiceFilePath = Path.Combine(userUnitFolder, $"{filename}");
+                unitFilePath = Path.Combine(userUnitFolder, $"{filename}");
             }
 
-            if (systemUnit)
+            try
             {
-                FileHelper.CreateFileForRoot(systemdServiceFilePath);
-            }
-
-            using (FileStream fs = new FileStream(systemdServiceFilePath, systemUnit ? FileMode.Truncate : FileMode.CreateNew))
-            {
-                using (StreamWriter sw = new StreamWriter(fs))
+                if (systemUnit)
                 {
-                    sw.Write(content);
+                    FileHelper.CreateFileForRoot(unitFilePath);
                 }
-            }
 
-            return systemdServiceFilePath;
+                using (FileStream fs = new FileStream(unitFilePath, systemUnit ? FileMode.Truncate : FileMode.CreateNew))
+                {
+                    using (StreamWriter sw = new StreamWriter(fs))
+                    {
+                        sw.Write(content);
+                    }
+                }
+
+                return true;
+            }
+            catch (IOException) when (File.Exists(unitFilePath))
+            {
+                Console.WriteLine($"A unit file {unitFilePath} already exists.");
+                return false;
+            }
         }
     }
 }

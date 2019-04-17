@@ -17,6 +17,7 @@ namespace Tmds.Systemd.Tool
         {
             var rootCommand = new RootCommand();
             rootCommand.AddCommand(CreateServiceCommand.Create());
+            rootCommand.AddCommand(CreateSocketCommand.Create());
             return rootCommand.InvokeAsync(args).Result;            
         }
     }

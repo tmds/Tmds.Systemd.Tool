@@ -22,6 +22,45 @@ namespace Tmds.Systemd.Tool
             options.Sort(firstOptionsLength, options.Count - firstOptionsLength, OrderByOptionName.Instance);
         }
 
+        public const string RequiredPrefix = "(required) ";
+
+        public static void AddNameOption(List<Option> options)
+        {
+            options.Add(new Option("--name", $"{RequiredPrefix}Name of the unit", new Argument<string>()));
+        }
+
+        public static void AddUserOption(List<Option> options)
+        {
+            options.Add(new Option("--user", "Create a user unit", new Argument<bool>()));
+        }
+
+        public static void AddConfigurationOptions(List<Option> options, IReadOnlyCollection<ConfigurationOption> configurationOptions)
+        {
+            foreach (var configOption in configurationOptions)
+            {
+                string description = $"Sets {configOption.Name}";
+                if (configOption.Multiple)
+                {
+                    description += ", may be specified multiple times";
+                }
+                if (configOption.Default != null)
+                {
+                    description += $", defaults to '{configOption.Default}'";
+                }
+                if (configOption.Required)
+                {
+                    description = RequiredPrefix + description;
+                }
+                Argument arg = configOption.Multiple ? (Argument)new Argument<string[]>() :
+                        configOption.Default != null ? new Argument<string>(configOption.Default) : new Argument<string>();
+                if (configOption.EnumValues != null)
+                {
+                    arg.AddSuggestions(configOption.EnumValues);
+                }
+                options.Add(new Option(configOption.Aliases, description, arg));
+            }
+        }
+
         public static void AddOptions(this Command command, List<Option> options)
         {
             foreach (var option in options)
