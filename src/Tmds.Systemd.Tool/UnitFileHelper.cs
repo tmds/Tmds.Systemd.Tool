@@ -1,19 +1,31 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace Tmds.Systemd.Tool
 {
     static class UnitFileHelper
     {
-        public static string BuildUnitFile(ConfigurationOption[] options, Dictionary<string, string> userOptions, Dictionary<string, string> substitutions)
+        public static string BuildUnitFile(ConfigurationOption[] options, ArgumentsDictionary optionValues, Dictionary<string, string> substitutions)
         {
             var sb = new StringBuilder();
             string currentSection = null;
             foreach (var option in options)
             {
-                string optionValue = Evaluate(option.Name, userOptions, option.Default, substitutions);
-                if (optionValue != null)
+                IReadOnlyCollection<string> value;
+                if (!optionValues.TryGetValue(option.Name.ToLowerInvariant(), out value))
                 {
+                    string defaultValue = option.Default;
+                    if (defaultValue != null)
+                    {
+                        value = new[] { defaultValue };
+                    }
+                }
+                if (value != null && value.Count > 0 && !string.IsNullOrEmpty(value.First()))
+                {
+                    // Start a new section
                     if (currentSection != option.Section)
                     {
                         if (currentSection != null)
@@ -23,27 +35,48 @@ namespace Tmds.Systemd.Tool
                         sb.AppendLine($"[{option.Section}]");
                         currentSection = option.Section;
                     }
-                    sb.AppendLine($"{option.Name}={optionValue}");
+                    foreach (var val in value)
+                    {
+                        string substitutedValue = val;
+                        foreach (var subsitution in substitutions)
+                        {
+                            substitutedValue = substitutedValue.Replace(subsitution.Key, subsitution.Value);
+                        }
+                        sb.AppendLine($"{option.Name}={substitutedValue}");
+                    }
                 }
             }
             return sb.ToString();
         }
 
-        private static string Evaluate(string name, Dictionary<string, string> userOptions, string @default, Dictionary<string, string> substitutions)
+        public static string CreateNewUnitFile(bool systemUnit, string filename, string content)
         {
-            string userValue;
-            if (!userOptions.TryGetValue(name.ToLowerInvariant(), out userValue))
+            string systemdServiceFilePath;
+            if (systemUnit)
             {
-                userValue = @default;
+                systemdServiceFilePath = $"/etc/systemd/system/{filename}";
             }
-            if (userValue != null)
+            else
             {
-                foreach (var substitution in substitutions)
+                string userUnitFolder = $"{Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)}/.config/systemd/user";
+                Directory.CreateDirectory(userUnitFolder);
+                systemdServiceFilePath = Path.Combine(userUnitFolder, $"{filename}");
+            }
+
+            if (systemUnit)
+            {
+                FileHelper.CreateFileForRoot(systemdServiceFilePath);
+            }
+
+            using (FileStream fs = new FileStream(systemdServiceFilePath, systemUnit ? FileMode.Truncate : FileMode.CreateNew))
+            {
+                using (StreamWriter sw = new StreamWriter(fs))
                 {
-                    userValue = userValue.Replace(substitution.Key, substitution.Value);
+                    sw.Write(content);
                 }
             }
-            return userValue;
+
+            return systemdServiceFilePath;
         }
     }
 }

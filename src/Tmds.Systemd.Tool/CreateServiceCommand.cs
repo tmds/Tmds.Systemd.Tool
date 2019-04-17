@@ -20,33 +20,52 @@ namespace Tmds.Systemd.Tool
 
         public static readonly ConfigurationOption[] ServiceOptions = new ConfigurationOption[]
         {
-            new ConfigurationOption(Unit, "Description", "%unitname%"),
+            new ConfigurationOption(Unit, "Description", null),
 
-            new ConfigurationOption(Service, "Type", "simple"),
-            new ConfigurationOption(Service, "WorkingDirectory", "%workingdirectory%"),
-            new ConfigurationOption(Service, "ExecStart", "%execstart%", required: true),
-            new ConfigurationOption(Service, "Restart", "on-failure"),
-            new ConfigurationOption(Service, "SyslogIdentifier", "%unitname%"),
+            new ConfigurationOption(Service, "Type", enumValues: new[] { "simple", "exec", "forking", "oneshot", "dbus", "notify", "idle" }),
+            new ConfigurationOption(Service, "WorkingDirectory", "%execstartdir%"),
+            new ConfigurationOption(Service, "ExecStart", required: true),
+            new ConfigurationOption(Service, "Restart", enumValues: new[] { "no", "on-success", "on-failure", "on-abnormal", "on-watchdog", "on-abort", "always" }),
+            new ConfigurationOption(Service, "SyslogIdentifier"),
             new ConfigurationOption(Service, "User", optionName: "uid"),
             new ConfigurationOption(Service, "Group", optionName: "gid"),
+            new ConfigurationOption(Service, "Environment", aliases: new[] { "-e" }, multiple: true ),
 
             new ConfigurationOption(Install, "WantedBy", "multi-user.target"),
         };
 
         public static Command Create()
         {
-            const string requiredSuffix = " (required)";
+            const string requiredPrefix = "(required) ";
 
-            var createServiceCommand = new Command("create-service", "Creates a systemd service", handler: CommandHandler.Create(new Func<bool, ParseResult, int>(CreateServiceHandler)));
+            var createServiceCommand = new Command("create-service", "Creates a systemd unit", handler: CommandHandler.Create(new Func<bool, ParseResult, int>(CreateServiceHandler)));
 
             var options = new List<Option>();
-            options.Add(new Option("--name", $"Name of the service{requiredSuffix}", new Argument<string>()));
-            options.Add(new Option("--user", "Create a user service", new Argument<bool>()));
+            options.Add(new Option("--name", $"{requiredPrefix}Name of the unit", new Argument<string>()));
+            options.Add(new Option("--user", "Create a user unit", new Argument<bool>()));
             foreach (var configOption in ServiceOptions)
             {
-                options.Add(new Option(configOption.Aliases, $"Sets {configOption.Name}{(configOption.Required ? requiredSuffix : "")}", new Argument<string>()));
+                string description = $"Sets {configOption.Name}";
+                if (configOption.Multiple)
+                {
+                    description += ", may be specified multiple times";
+                }
+                if (configOption.Default != null)
+                {
+                    description += $", defaults to '{configOption.Default}'";
+                }
+                if (configOption.Required)
+                {
+                    description = requiredPrefix + description;
+                }
+                Argument arg = configOption.Multiple ? (Argument)new Argument<string[]>() :
+                        configOption.Default != null ? new Argument<string>(configOption.Default) : new Argument<string>();
+                if (configOption.EnumValues != null)
+                {
+                    arg.AddSuggestions(configOption.EnumValues);
+                }
+                options.Add(new Option(configOption.Aliases, description, arg));
             }
-            // TODO: add option to add environment variables
             // TODO: add option to add 'any' parameter
 
             OptionHelper.Sort(options, new[] { "name", "execstart", "user" });
@@ -58,85 +77,31 @@ namespace Tmds.Systemd.Tool
         private static int CreateServiceHandler(bool user, ParseResult result)
         {
             bool systemUnit = !user;
-            var commandOptions = OptionHelper.GetCommandOptions(result);
+            var commandOptions = new ArgumentsDictionary(result.CommandResult.Children);
 
             if (!Prerequisite.RequiredOption(commandOptions, "name", out string unitName) ||
                 !Prerequisite.RequiredOption(commandOptions, "execstart", out string execStartUser) ||
                 (systemUnit && !Prerequisite.RunningAsRoot()) ||
-                !Prerequisite.ResolveApplication(execStartUser, systemUnit, out string execStart, out string workingDirectory))
+                !Prerequisite.ResolveApplication(execStartUser, systemUnit, out string execStart, out string execStartDir))
             {
                 return 1;
             }
 
-            // Replace user execstart with resolved application execstart
-            commandOptions.Remove("execstart");
-            commandOptions.Add("execstart", execStart);
-            // Use workingdirectory of resolved application if not specified by the user
-            if (!commandOptions.ContainsKey("workingdirectory"))
-            {
-                commandOptions.Add("workingdirectory", workingDirectory);
-            }
-
             var substitutions = new Dictionary<string, string>();
             substitutions.Add("%unitname%", unitName);
+            substitutions.Add("%execstartdir%", execStartDir);
+
+            // Replace user execstart with resolved application execstart
+            commandOptions.SetValue("execstart", execStart);
 
             string unitFileContent = UnitFileHelper.BuildUnitFile(ServiceOptions, commandOptions, substitutions);
 
             string systemdServiceFilePath;
-            if (user)
-            {
-                string userUnitFolder = $"{Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)}/.config/systemd/user";
-                Directory.CreateDirectory(userUnitFolder);
-                systemdServiceFilePath = Path.Combine(userUnitFolder, $"{unitName}.service");
-            }
-            else
-            {
-                systemdServiceFilePath = $"/etc/systemd/system/{unitName}.service";
-            }
-
             try
             {
-                if (systemUnit)
-                {
-                    // Create a new empty file.
-                    using (FileStream fs = new FileStream(systemdServiceFilePath, FileMode.CreateNew))
-                    {
-                        using (StreamWriter sw = new StreamWriter(fs))
-                        { }
-                    }
-                    bool deleteFile = true;
-                    try
-                    {
-                        if (!ProcessHelper.ExecuteSuccess("chmod", $"644 {systemdServiceFilePath}") ||
-                            !ProcessHelper.ExecuteSuccess("chown", $"root:root {systemdServiceFilePath}"))
-                        {
-                            System.Console.WriteLine($"Failed to set permissions and ownership of {systemdServiceFilePath}");
-                            return 1;
-                        }
-                        deleteFile = false;
-                    }
-                    finally
-                    {
-                        try
-                        {
-                            if (deleteFile)
-                            {
-                                File.Delete(systemdServiceFilePath);
-                            }
-                        }
-                        catch
-                        {}
-                    }
-                }
-                using (FileStream fs = new FileStream(systemdServiceFilePath, systemUnit ? FileMode.Truncate : FileMode.CreateNew))
-                {
-                    using (StreamWriter sw = new StreamWriter(fs))
-                    {
-                        sw.Write(unitFileContent);
-                    }
-                }
+                systemdServiceFilePath = UnitFileHelper.CreateNewUnitFile(systemUnit, $"{unitName}.service", unitFileContent);
             }
-            catch (IOException) when (File.Exists(systemdServiceFilePath))
+            catch (IOException e) when (e.HResult == 17 /* EEXIST */ )
             {
                 Console.WriteLine("A service with that name already exists.");
                 return 1;

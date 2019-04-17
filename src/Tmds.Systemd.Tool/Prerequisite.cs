@@ -48,7 +48,7 @@ namespace Tmds.Systemd.Tool
                         return false;
                     }
                 }
-                execStart = $"'{dotnetPath}' '{execStart}'";
+                execStart = ProcessHelper.CreateCommandLine(new[] { dotnetPath, execStart });
             }
             string scls = GetSoftwareCollections();
             if (scls != null)
@@ -105,7 +105,7 @@ namespace Tmds.Systemd.Tool
 
         private static string GetSoftwareCollections() => Environment.GetEnvironmentVariable("X_SCLS");
 
-        public static bool RequiredOption(Dictionary<string, string> commandOptions, string name, out string value)
+        public static bool RequiredOption(ArgumentsDictionary commandOptions, string name, out string value)
         {
             if (!commandOptions.TryGetValue(name.ToLowerInvariant(), out value))
             {

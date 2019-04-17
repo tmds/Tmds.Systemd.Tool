@@ -4,7 +4,7 @@ namespace Tmds.Systemd.Tool
 {
     class ConfigurationOption
     {
-        public ConfigurationOption(string section, string name, string @default = null, string optionName = null, bool required = false, IReadOnlyCollection<string> aliases = null)
+        public ConfigurationOption(string section, string name, string @default = null, string optionName = null, bool required = false, IReadOnlyCollection<string> aliases = null, bool multiple = false, IReadOnlyCollection<string> enumValues = null)
         {
             Section = section;
             Name = name;
@@ -12,6 +12,8 @@ namespace Tmds.Systemd.Tool
             Default = @default;
             OptionName = optionName ?? name.ToLowerInvariant();
             Required = required;
+            Multiple = multiple;
+            EnumValues = enumValues;
 
             if (aliases == null)
             {
@@ -33,6 +35,8 @@ namespace Tmds.Systemd.Tool
 
         public string OptionName { get; }
         public bool Required { get; }
+        public bool Multiple { get; }
         public IReadOnlyCollection<string> Aliases { get; }
+        public IReadOnlyCollection<string> EnumValues { get; }
     }
 }
